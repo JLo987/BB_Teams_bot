@@ -1,0 +1,45 @@
+{
+    "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
+    "manifestVersion": "1.16",
+    "id": "<bot-app-id>",
+    "version": "1.0.0",
+    "packageName": "com.example.ragbot",
+    "developer": {
+      "name": "Your Name",
+      "websiteUrl": "https://example.com",
+      "privacyUrl": "https://example.com/privacy",
+      "termsOfUseUrl": "https://example.com/terms"
+    },
+    "name": {
+      "short": "RAG Bot",
+      "full": "RAG Bot for Knowledge Queries"
+    },
+    "description": {
+      "short": "A bot for answering queries using RAG.",
+      "full": "This bot uses retrieval-augmented generation to answer your questions in Teams."
+    },
+    "icons": {
+      "color": "icon.png",
+      "outline": "icon-outline.png"
+    },
+    "bots": [
+      {
+        "botId": "<bot-app-id>",
+        "scopes": ["personal", "team", "groupchat"],
+        "commandLists": [
+          {
+            "scopes": ["personal", "team", "groupchat"],
+            "commands": [
+              {
+                "title": "Help",
+                "description": "Get help with the bot"
+              }
+            ]
+          }
+        ],
+        "supportsFiles": false,
+        "isNotificationOnly": false
+      }
+    ],
+    "validDomains": ["*.azurewebsites.net", "graph.microsoft.com"]
+  }

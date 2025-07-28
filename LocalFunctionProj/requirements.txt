@@ -1,0 +1,12 @@
+azure-functions>=1.18.0
+transformers
+torch --index-url https://download.pytorch.org/whl/cpu
+sentence-transformers
+numpy
+psycopg2-binary
+requests
+rank_bm25
+botbuilder-core>=4.14.0
+botframework-connector>=4.14.0
+msgraph-sdk
+msal
