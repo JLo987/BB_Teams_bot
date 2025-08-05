@@ -1,45 +1,57 @@
 {
-    "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
-    "manifestVersion": "1.16",
-    "id": "<bot-app-id>",
-    "version": "1.0.0",
-    "packageName": "com.example.ragbot",
-    "developer": {
-      "name": "Your Name",
-      "websiteUrl": "https://example.com",
-      "privacyUrl": "https://example.com/privacy",
-      "termsOfUseUrl": "https://example.com/terms"
-    },
-    "name": {
-      "short": "RAG Bot",
-      "full": "RAG Bot for Knowledge Queries"
-    },
-    "description": {
-      "short": "A bot for answering queries using RAG.",
-      "full": "This bot uses retrieval-augmented generation to answer your questions in Teams."
-    },
-    "icons": {
-      "color": "icon.png",
-      "outline": "icon-outline.png"
-    },
-    "bots": [
-      {
-        "botId": "<bot-app-id>",
-        "scopes": ["personal", "team", "groupchat"],
-        "commandLists": [
-          {
-            "scopes": ["personal", "team", "groupchat"],
-            "commands": [
-              {
-                "title": "Help",
-                "description": "Get help with the bot"
-              }
-            ]
-          }
-        ],
-        "supportsFiles": false,
-        "isNotificationOnly": false
-      }
-    ],
-    "validDomains": ["*.azurewebsites.net", "graph.microsoft.com"]
-  }
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.17",
+  "version": "1.0.0",
+  "id": "8211070f-4cdf-4897-8f63-124a4febbaa8",
+  "developer": {
+    "name": "BBJL",
+    "websiteUrl": "https://www.linkedin.com/in/jean-louis-swart",
+    "privacyUrl": "https://www.linkedin.com/in/jean-louis-swart",
+    "termsOfUseUrl": "https://www.linkedin.com/in/jean-louis-swart"
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "name": {
+    "short": "RAG Bot",
+    "full": "Retrieval-Augmented Generation Bot"
+  },
+  "description": {
+    "short": "AI-powered bot that answers questions using your knowledge base",
+    "full": "An intelligent bot that uses retrieval-augmented generation to provide accurate answers based on your organization's documents and knowledge base."
+  },
+  "accentColor": "#FFFFFF",
+  "bots": [
+    {
+      "botId": "8211070f-4cdf-4897-8f63-124a4febbaa8",
+      "scopes": [
+        "personal"
+      ],
+      "commandLists": [
+        {
+          "scopes": [
+            "personal"
+          ],
+          "commands": [
+            {
+              "title": "Help",
+              "description": "Get help using the RAG bot"
+            },
+            {
+              "title": "Ask",
+              "description": "Ask a question about your knowledge base"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "permissions": [
+    "identity",
+    "messageTeamMembers"
+  ],
+  "validDomains": [
+    "rag-embedder-awadazc4fcaddses.southafricanorth-01.azurewebsites.net"
+  ]
+}

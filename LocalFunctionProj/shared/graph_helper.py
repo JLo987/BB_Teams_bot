@@ -1,26 +1,41 @@
-import os
-from msal import ConfidentialClientApplication
+from azure.identity.aio import ClientSecretCredential
+from azure.identity import DeviceCodeCredential
 from msgraph import GraphServiceClient
+import os
 
-APP_ID = os.getenv("MicrosoftAppId")
-APP_SECRET = os.getenv("MicrosoftAppPassword")
-TENANT_ID = os.getenv("TenantId")
+APP_ID = os.getenv("MicrosoftAppId", "")
+APP_SECRET = os.getenv("MicrosoftAppPassword", "")
+TENANT_ID = os.getenv("TenantId", "")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
-SCOPES = ["https://graph.microsoft.com/.default"]
 
 async def get_graph_client():
-    app = ConfidentialClientApplication(
-        APP_ID, authority=AUTHORITY, client_credential=APP_SECRET
+    """
+    Get Microsoft Graph client.
+    First tries application permissions (organizational accounts),
+    then falls back to personal account handling.
+    """
+    # For organizational accounts with SharePoint Online licensing
+    credential = ClientSecretCredential(
+        tenant_id=TENANT_ID,
+        client_id=APP_ID, 
+        client_secret=APP_SECRET
     )
-    result = app.acquire_token_for_client(scopes=SCOPES)
-    if "access_token" in result:
-        credentials = TokenCredential(result["access_token"])
-        return GraphServiceClient(credentials=credentials)
-    raise Exception("Failed to get access token")
+    scopes = ["https://graph.microsoft.com/.default"]
+    return GraphServiceClient(credentials=credential, scopes=scopes)
 
-class TokenCredential:
-    def __init__(self, token):
-        self.token = token
-
-    async def get_token(self, *scopes, **kwargs):
-        return self.token, None, None 
+async def get_graph_client_personal():
+    """
+    Alternative method for personal Microsoft accounts.
+    Uses different tenant configuration for personal accounts.
+    """
+    # For personal accounts, use 'common' or 'consumers' tenant
+    personal_tenant = "common"  # or "consumers" for personal accounts only
+    
+    credential = ClientSecretCredential(
+        tenant_id=personal_tenant,
+        client_id=APP_ID, 
+        client_secret=APP_SECRET
+    )
+    # Use more specific scopes for personal accounts
+    scopes = ["https://graph.microsoft.com/Files.Read.All", "https://graph.microsoft.com/User.Read"]
+    return GraphServiceClient(credentials=credential, scopes=scopes)

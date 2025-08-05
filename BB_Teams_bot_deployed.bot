@@ -1,0 +1,19 @@
+{
+    "name": "BB_Teams_bot_deployed",
+    "description": "RAG bot for BB - testing remote hosting",
+    "services": [
+        {
+            "type": "endpoint",
+            "name": "",
+            "id": "",
+            "appId": "",
+            "appPassword": "",
+            "tenantId": "",
+            "endpoint": ""
+        }
+    ],
+    "padlock": "",
+    "version": "2.0",
+    "path": "C:\\Users\\swart\\Desktop\\BB_Teams_bot\\BB_Teams_bot_deployed.bot",
+    "overrides": null
+}
