@@ -5,6 +5,8 @@ import os
 import json
 import sys
 import urllib.parse
+import asyncio
+import time
 from typing import List, Dict, Optional
 from shared.graph_helper import get_graph_client
 
@@ -33,6 +35,93 @@ GRAPH_DRIVE_ID = os.getenv("GRAPH_DRIVE_ID")  # Optional: specific drive ID
 # Sync configuration
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "500"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "50"))
+
+# Enhanced sync configuration for enterprise use
+MAX_RETRIES = int(os.getenv("MAX_RETRIES", "3"))
+BATCH_SIZE = int(os.getenv("BATCH_SIZE", "100"))
+INITIAL_RETRY_DELAY = float(os.getenv("INITIAL_RETRY_DELAY", "1.0"))
+MAX_RETRY_DELAY = float(os.getenv("MAX_RETRY_DELAY", "60.0"))
+RATE_LIMIT_RETRY_DELAY = float(os.getenv("RATE_LIMIT_RETRY_DELAY", "30.0"))
+
+class SyncError(Exception):
+    """Base exception for sync operations"""
+    pass
+
+class RecoverableError(SyncError):
+    """Error that can be retried"""
+    pass
+
+class PermanentError(SyncError):
+    """Error that should not be retried"""
+    pass
+
+def is_rate_limit_error(error: Exception) -> bool:
+    """Check if error is due to rate limiting"""
+    error_str = str(error).lower()
+    return any(phrase in error_str for phrase in [
+        'throttled', 'rate limit', 'too many requests', '429', 
+        'service unavailable', '503', 'quota exceeded'
+    ])
+
+def is_recoverable_error(error: Exception) -> bool:
+    """Determine if an error is recoverable and should be retried"""
+    error_str = str(error).lower()
+    
+    # Definitely recoverable
+    recoverable_patterns = [
+        'timeout', 'connection', 'network', 'temporary', 
+        'service unavailable', '503', '502', '504'
+    ]
+    
+    # Definitely not recoverable
+    permanent_patterns = [
+        'not found', '404', 'unauthorized', '401', 
+        'forbidden', '403', 'bad request', '400'
+    ]
+    
+    if any(pattern in error_str for pattern in permanent_patterns):
+        return False
+    
+    if any(pattern in error_str for pattern in recoverable_patterns):
+        return True
+    
+    # Rate limiting is recoverable with longer delay
+    if is_rate_limit_error(error):
+        return True
+    
+    # Default to recoverable for unknown errors
+    return True
+
+async def retry_with_backoff(func, *args, max_retries=MAX_RETRIES, **kwargs):
+    """Execute function with exponential backoff retry logic"""
+    last_exception = None
+    
+    for attempt in range(max_retries + 1):
+        try:
+            return await func(*args, **kwargs)
+        except Exception as e:
+            last_exception = e
+            
+            if attempt == max_retries:
+                # Final attempt failed
+                break
+            
+            if not is_recoverable_error(e):
+                # Don't retry permanent errors
+                raise PermanentError(f"Permanent error: {str(e)}") from e
+            
+            # Calculate delay
+            if is_rate_limit_error(e):
+                delay = RATE_LIMIT_RETRY_DELAY
+                logging.warning(f"Rate limit detected, waiting {delay}s before retry {attempt + 1}/{max_retries}")
+            else:
+                delay = min(INITIAL_RETRY_DELAY * (2 ** attempt), MAX_RETRY_DELAY)
+                logging.warning(f"Recoverable error on attempt {attempt + 1}/{max_retries}, retrying in {delay}s: {str(e)}")
+            
+            await asyncio.sleep(delay)
+    
+    # All retries exhausted
+    raise RecoverableError(f"Max retries ({max_retries}) exhausted: {str(last_exception)}") from last_exception
 
 def get_supported_file_types() -> List[str]:
     """Get list of supported file extensions"""
@@ -288,52 +377,299 @@ async def process_file_change(change, conn, cursor, graph_client=None) -> int:
         logging.error(f"Error processing file {change.name if hasattr(change, 'name') else 'unknown'}: {str(e)}")
         return 0
 
+async def collect_all_files(graph_client, drive_id: str, folder_id: str = 'root', current_path: str = "") -> List[Dict]:
+    """Recursively collect all files in drive for batched processing"""
+    all_files = []
+    
+    try:
+        items_response = await retry_with_backoff(
+            lambda: graph_client.drives.by_drive_id(drive_id).items.by_drive_item_id(folder_id).children.get()
+        )
+        
+        if not items_response or not hasattr(items_response, 'value') or not items_response.value:
+            return all_files
+            
+        for item in items_response.value:
+            item_path = f"{current_path}/{getattr(item, 'name', 'unknown')}"
+            
+            if hasattr(item, 'file') and item.file:
+                # Add file to collection with metadata
+                all_files.append({
+                    'item': item,
+                    'path': item_path,
+                    'type': 'file'
+                })
+            elif hasattr(item, 'folder') and item.folder:
+                # Recursively collect from subfolder
+                subfolder_files = await collect_all_files(graph_client, drive_id, item.id, item_path)
+                all_files.extend(subfolder_files)
+                
+    except Exception as e:
+        logging.error(f"Error collecting files from folder {current_path}: {str(e)}")
+        # Don't fail entire collection for one folder error
+        
+    return all_files
+
+async def process_file_batch(file_batch: List[Dict], conn, cursor, graph_client, progress_info: Dict) -> Dict:
+    """Process a batch of files with progress tracking"""
+    batch_results = {
+        'processed': 0,
+        'failed': 0,
+        'chunks_created': 0,
+        'errors': []
+    }
+    
+    for file_info in file_batch:
+        try:
+            item = file_info['item']
+            file_path = file_info['path']
+            
+            # Update progress
+            progress_info['current_file'] = file_path
+            await store_sync_progress(
+                progress_info['drive_id'], cursor, 
+                progress_info['total_files'], 
+                progress_info['processed_files'], 
+                progress_info['failed_files'], 
+                file_path
+            )
+            
+            # Process file with retry logic
+            chunks_processed = await retry_with_backoff(
+                process_file_change, item, conn, cursor, graph_client
+            )
+            
+            batch_results['processed'] += 1
+            batch_results['chunks_created'] += chunks_processed
+            progress_info['processed_files'] += 1
+            
+            logging.info(f"Successfully processed: {file_path} ({chunks_processed} chunks)")
+            
+        except PermanentError as pe:
+            # Don't retry permanent errors
+            batch_results['failed'] += 1
+            progress_info['failed_files'] += 1
+            error_msg = f"Permanent error for {file_info['path']}: {str(pe)}"
+            batch_results['errors'].append(error_msg)
+            logging.error(error_msg)
+            
+        except RecoverableError as re:
+            # Max retries exhausted for this file
+            batch_results['failed'] += 1
+            progress_info['failed_files'] += 1
+            error_msg = f"Max retries exhausted for {file_info['path']}: {str(re)}"
+            batch_results['errors'].append(error_msg)
+            logging.error(error_msg)
+            
+        except Exception as e:
+            # Unexpected error
+            batch_results['failed'] += 1
+            progress_info['failed_files'] += 1
+            error_msg = f"Unexpected error for {file_info['path']}: {str(e)}"
+            batch_results['errors'].append(error_msg)
+            logging.error(error_msg)
+    
+    return batch_results
+
 async def full_sync_drive(graph_client, drive_id: str, conn, cursor) -> int:
-    """Perform full sync of a drive"""
-    logging.info(f"Starting full sync for drive: {drive_id}")
+    """Perform robust full sync with batching, progress tracking, and error recovery"""
+    logging.info(f"Starting enhanced full sync for drive: {drive_id}")
+    
+    # Check for existing progress
+    existing_progress = await get_sync_progress(drive_id, cursor, "full")
     total_processed = 0
     
     try:
-        # Get all files in the drive recursively
-        items_response = await graph_client.drives.by_drive_id(drive_id).items.by_drive_item_id('root').children.get()
-        print(items_response)
+        # Step 1: Collect all files (with retry logic)
+        logging.info("Phase 1: Collecting all files and folders...")
+        all_files = await retry_with_backoff(collect_all_files, graph_client, drive_id)
         
-        async def process_folder(folder_items):
-            nonlocal total_processed
-            if not folder_items:
-                return
-                
-            for item in folder_items:
-                try:
-                    if hasattr(item, 'file') and item.file:
-                        # Process file with graph_client for permission extraction
-                        processed = await process_file_change(item, conn, cursor, graph_client)
-                        total_processed += processed
-                    elif hasattr(item, 'folder') and item.folder:
-                        # Recursively process subfolder
-                        try:
-                            subfolder_response = await graph_client.drives.by_drive_id(drive_id).items.by_drive_item_id(item.id).children.get()
-                            if subfolder_response and hasattr(subfolder_response, 'value') and subfolder_response.value:
-                                await process_folder(subfolder_response.value)
-                        except Exception as subfolder_error:
-                            logging.warning(f"Error processing subfolder {getattr(item, 'name', 'unknown')}: {str(subfolder_error)}")
-                            continue
-                except Exception as item_error:
-                    logging.error(f"Error processing item {getattr(item, 'name', 'unknown')}: {str(item_error)}")
-                    continue
+        # Filter for supported file types
+        supported_files = [f for f in all_files if is_supported_file(getattr(f['item'], 'name', ''))]
         
-        if items_response and hasattr(items_response, 'value') and items_response.value:
-            await process_folder(items_response.value)
-        else:
-            logging.warning("No items found in drive root or unexpected response format")
+        logging.info(f"Found {len(all_files)} total items, {len(supported_files)} supported files")
+        
+        if not supported_files:
+            logging.warning("No supported files found in drive")
+            return 0
+        
+        # Initialize progress tracking
+        progress_info = {
+            'drive_id': drive_id,
+            'total_files': len(supported_files),
+            'processed_files': existing_progress.get('processed_files', 0),
+            'failed_files': existing_progress.get('failed_files', 0),
+            'current_file': ''
+        }
+        
+        # Step 2: Process files in batches
+        logging.info(f"Phase 2: Processing {len(supported_files)} files in batches of {BATCH_SIZE}")
+        
+        for i in range(0, len(supported_files), BATCH_SIZE):
+            batch = supported_files[i:i + BATCH_SIZE]
+            batch_num = i // BATCH_SIZE + 1
+            total_batches = (len(supported_files) + BATCH_SIZE - 1) // BATCH_SIZE
             
-        logging.info(f"Full sync completed. Processed {total_processed} chunks total.")
+            logging.info(f"Processing batch {batch_num}/{total_batches} ({len(batch)} files)")
+            
+            try:
+                batch_results = await process_file_batch(batch, conn, cursor, graph_client, progress_info)
+                total_processed += batch_results['chunks_created']
+                
+                # Commit after each batch
+                conn.commit()
+                
+                logging.info(f"Batch {batch_num} completed: {batch_results['processed']} processed, "
+                           f"{batch_results['failed']} failed, {batch_results['chunks_created']} chunks created")
+                
+                if batch_results['errors']:
+                    logging.warning(f"Batch {batch_num} errors: {'; '.join(batch_results['errors'][:3])}")
+                
+            except Exception as batch_error:
+                logging.error(f"Critical error in batch {batch_num}: {str(batch_error)}")
+                conn.rollback()
+                # Continue with next batch rather than failing entire sync
+                continue
+        
+        # Clear progress tracking on successful completion
+        await clear_sync_progress(drive_id, cursor, "full")
+        conn.commit()
+        
+        logging.info(f"Enhanced full sync completed successfully!")
+        logging.info(f"Results: {progress_info['processed_files']} files processed, "
+                    f"{progress_info['failed_files']} failed, {total_processed} total chunks created")
+        
         return total_processed
         
     except Exception as e:
-        logging.error(f"Error in full sync: {str(e)}")
+        logging.error(f"Critical error in enhanced full sync: {str(e)}")
         logging.exception("Full sync exception details:")
+        
+        # Store error state for potential resume
+        try:
+            await store_sync_progress(
+                drive_id, cursor, 
+                progress_info.get('total_files', 0), 
+                progress_info.get('processed_files', 0), 
+                progress_info.get('failed_files', 0), 
+                f"ERROR: {str(e)[:100]}"
+            )
+            conn.commit()
+        except:
+            pass
+            
         return total_processed
+
+async def verify_sync_integrity(graph_client, drive_id: str, cursor) -> Dict:
+    """Verify that database state matches OneDrive state"""
+    logging.info(f"Starting integrity verification for drive: {drive_id}")
+    
+    integrity_report = {
+        'onedrive_files': 0,
+        'database_files': 0,
+        'missing_in_db': [],
+        'orphaned_in_db': [],
+        'size_mismatches': [],
+        'modification_mismatches': [],
+        'integrity_score': 0.0
+    }
+    
+    try:
+        # Get all files from OneDrive
+        onedrive_files = await collect_all_files(graph_client, drive_id)
+        onedrive_file_ids = {f['item'].id: f for f in onedrive_files if hasattr(f['item'], 'file')}
+        integrity_report['onedrive_files'] = len(onedrive_file_ids)
+        
+        # Get all files from database
+        cursor.execute("SELECT DISTINCT file_id, filename, COUNT(*) as chunk_count FROM chunks_v2 GROUP BY file_id, filename")
+        db_files = cursor.fetchall()
+        db_file_ids = {row[0]: {'filename': row[1], 'chunk_count': row[2]} for row in db_files}
+        integrity_report['database_files'] = len(db_file_ids)
+        
+        # Find discrepancies
+        for file_id, file_info in onedrive_file_ids.items():
+            if file_id not in db_file_ids:
+                integrity_report['missing_in_db'].append({
+                    'file_id': file_id,
+                    'filename': getattr(file_info['item'], 'name', 'unknown'),
+                    'path': file_info['path']
+                })
+        
+        for file_id, db_info in db_file_ids.items():
+            if file_id not in onedrive_file_ids:
+                integrity_report['orphaned_in_db'].append({
+                    'file_id': file_id,
+                    'filename': db_info['filename'],
+                    'chunk_count': db_info['chunk_count']
+                })
+        
+        # Calculate integrity score
+        total_files = max(len(onedrive_file_ids), len(db_file_ids))
+        if total_files > 0:
+            issues = len(integrity_report['missing_in_db']) + len(integrity_report['orphaned_in_db'])
+            integrity_report['integrity_score'] = max(0.0, (total_files - issues) / total_files * 100)
+        
+        logging.info(f"Integrity verification completed. Score: {integrity_report['integrity_score']:.1f}%")
+        logging.info(f"Issues found: {len(integrity_report['missing_in_db'])} missing, {len(integrity_report['orphaned_in_db'])} orphaned")
+        
+        return integrity_report
+        
+    except Exception as e:
+        logging.error(f"Error during integrity verification: {str(e)}")
+        integrity_report['error'] = str(e)
+        return integrity_report
+
+async def cleanup_orphaned_records(cursor, orphaned_files: List[Dict]) -> int:
+    """Clean up orphaned database records"""
+    if not orphaned_files:
+        return 0
+    
+    cleaned = 0
+    for orphan in orphaned_files:
+        try:
+            file_id = orphan['file_id']
+            # Delete chunks
+            cursor.execute("DELETE FROM chunks_v2 WHERE file_id = %s", (file_id,))
+            deleted_chunks = cursor.rowcount
+            
+            # Delete permissions
+            cursor.execute("DELETE FROM file_permissions_v2 WHERE file_id = %s", (file_id,))
+            deleted_perms = cursor.rowcount
+            
+            logging.info(f"Cleaned up orphaned file {orphan['filename']}: {deleted_chunks} chunks, {deleted_perms} permissions")
+            cleaned += 1
+            
+        except Exception as e:
+            logging.error(f"Error cleaning up orphaned file {orphan.get('filename', 'unknown')}: {str(e)}")
+    
+    return cleaned
+
+async def sync_missing_files(graph_client, drive_id: str, cursor, conn, missing_files: List[Dict]) -> int:
+    """Sync files that are missing from database"""
+    if not missing_files:
+        return 0
+    
+    synced = 0
+    for missing in missing_files:
+        try:
+            # Find the item in OneDrive and process it
+            file_id = missing['file_id']
+            item = await retry_with_backoff(
+                lambda: graph_client.drives.by_drive_id(drive_id).items.by_drive_item_id(file_id).get()
+            )
+            
+            if item:
+                chunks_processed = await retry_with_backoff(
+                    process_file_change, item, conn, cursor, graph_client
+                )
+                if chunks_processed > 0:
+                    synced += 1
+                    logging.info(f"Synced missing file: {missing['filename']} ({chunks_processed} chunks)")
+                    
+        except Exception as e:
+            logging.error(f"Error syncing missing file {missing.get('filename', 'unknown')}: {str(e)}")
+    
+    return synced
 
 async def get_delta_link_from_db(drive_id: str, cursor) -> Optional[str]:
     """Get stored delta link for a drive from database"""
@@ -344,6 +680,53 @@ async def get_delta_link_from_db(drive_id: str, cursor) -> Optional[str]:
     except Exception as e:
         logging.error(f"Error getting delta link from database: {str(e)}")
         return None
+
+async def store_sync_progress(drive_id: str, cursor, total_files: int = 0, processed_files: int = 0, failed_files: int = 0, current_folder: str = "", sync_type: str = "full"):
+    """Store sync progress for resumability"""
+    try:
+        cursor.execute("""
+            INSERT INTO sync_progress (drive_id, sync_type, total_files, processed_files, failed_files, current_folder, started_at)
+            VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (drive_id, sync_type) 
+            DO UPDATE SET 
+                total_files = EXCLUDED.total_files,
+                processed_files = EXCLUDED.processed_files,
+                failed_files = EXCLUDED.failed_files,
+                current_folder = EXCLUDED.current_folder,
+                updated_at = CURRENT_TIMESTAMP
+        """, (drive_id, sync_type, total_files, processed_files, failed_files, current_folder))
+        logging.info(f"Progress updated: {processed_files}/{total_files} files, {failed_files} failed, folder: {current_folder}")
+    except Exception as e:
+        logging.warning(f"Error storing sync progress: {str(e)}")
+
+async def get_sync_progress(drive_id: str, cursor, sync_type: str = "full") -> Dict:
+    """Get current sync progress"""
+    try:
+        cursor.execute("""
+            SELECT total_files, processed_files, failed_files, current_folder, started_at
+            FROM sync_progress 
+            WHERE drive_id = %s AND sync_type = %s
+        """, (drive_id, sync_type))
+        result = cursor.fetchone()
+        if result:
+            return {
+                'total_files': result[0],
+                'processed_files': result[1], 
+                'failed_files': result[2],
+                'current_folder': result[3],
+                'started_at': result[4]
+            }
+        return {}
+    except Exception as e:
+        logging.error(f"Error getting sync progress: {str(e)}")
+        return {}
+
+async def clear_sync_progress(drive_id: str, cursor, sync_type: str = "full"):
+    """Clear sync progress after successful completion"""
+    try:
+        cursor.execute("DELETE FROM sync_progress WHERE drive_id = %s AND sync_type = %s", (drive_id, sync_type))
+    except Exception as e:
+        logging.warning(f"Error clearing sync progress: {str(e)}")
 
 async def store_delta_link_in_db(drive_id: str, delta_link: str, cursor, files_processed: int = 0, chunks_created: int = 0, sync_status: str = 'active', error_message: str = None):
     """Store or update delta link for a drive in optimized database structure"""
