@@ -82,8 +82,9 @@ jobs:
         id: deploy-to-function
         with:
           app-name: 'rag-embedder'
-          package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
+          package: '.'
 
           
+
 
 
