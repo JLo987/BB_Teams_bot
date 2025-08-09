@@ -1,10 +1,8 @@
 import azure.functions as func
 import psycopg2
-import numpy as np
 import json
 import logging
 import os
-from rank_bm25 import BM25Okapi
 from shared.model_helper import get_sentence_model
 
 DB_HOST = os.getenv("DB_HOST")
@@ -78,7 +76,8 @@ async def retrieve_internal(query: str, user_id: str = None, user_email: str = N
         if not tokenized_docs:
             return []
         
-        # Calculate BM25 scores for hybrid ranking
+        # Calculate BM25 scores for hybrid ranking (lazy import)
+        from rank_bm25 import BM25Okapi
         bm25 = BM25Okapi(tokenized_docs)
         query_tokens = query.strip().split()
         bm25_scores = bm25.get_scores(query_tokens) if query_tokens else [0.0] * len(tokenized_docs)

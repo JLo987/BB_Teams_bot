@@ -25,8 +25,9 @@ async def call_llm(prompt: str) -> str:
         return "Sorry, I couldn't generate a response right now."
 
 async def call_anthropic(prompt: str) -> str:
-    """Call Anthropic Claude API"""
+    """Call Anthropic Claude API with lazy import"""
     try:
+        # Lazy import to reduce startup time
         import anthropic
         
         client = anthropic.Anthropic(api_key=LLM_API_KEY)

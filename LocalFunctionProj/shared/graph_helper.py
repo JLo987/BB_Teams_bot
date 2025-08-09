@@ -1,6 +1,3 @@
-from azure.identity.aio import ClientSecretCredential
-from azure.identity import DeviceCodeCredential
-from msgraph import GraphServiceClient
 import os
 
 APP_ID = os.getenv("MicrosoftAppId", "")
@@ -14,6 +11,10 @@ async def get_graph_client():
     First tries application permissions (organizational accounts),
     then falls back to personal account handling.
     """
+    # Lazy imports for graph client
+    from azure.identity.aio import ClientSecretCredential
+    from msgraph import GraphServiceClient
+    
     # For organizational accounts with SharePoint Online licensing
     credential = ClientSecretCredential(
         tenant_id=TENANT_ID,
@@ -28,6 +29,10 @@ async def get_graph_client_personal():
     Alternative method for personal Microsoft accounts.
     Uses different tenant configuration for personal accounts.
     """
+    # Lazy imports for graph client
+    from azure.identity.aio import ClientSecretCredential
+    from msgraph import GraphServiceClient
+    
     # For personal accounts, use 'common' or 'consumers' tenant
     personal_tenant = "common"  # or "consumers" for personal accounts only
     

@@ -2,13 +2,7 @@ import azure.functions as func
 import io
 import json
 import logging
-from PIL import Image
-import pytesseract
-from pdf2image import convert_from_bytes
-import pandas as pd
-from docx import Document
 from io import BytesIO
-import pdfplumber
 from shared.graph_helper import get_graph_client, get_graph_client_personal
 
 logger = logging.getLogger()
@@ -37,6 +31,8 @@ def get_file_type(filename: str) -> str:
 
 def detect_orientation(image, skip_orientation_check=False):
     """Detect if image is landscape and needs rotation"""
+    # Lazy import for image processing
+    import pytesseract
     
     # Skip orientation detection for performance if requested
     if skip_orientation_check:
@@ -98,6 +94,10 @@ def detect_orientation(image, skip_orientation_check=False):
 
 def process_image(image_bytes):
     """Process image bytes and return OCR text"""
+    # Lazy imports for image processing
+    from PIL import Image
+    import pytesseract
+    
     logger.info("Processing image file")
     image = Image.open(io.BytesIO(image_bytes))
     corrected_image = detect_orientation(image)
@@ -105,6 +105,9 @@ def process_image(image_bytes):
 
 def process_pdf(pdf_bytes, max_pages_for_ocr=50):
     """Process PDF by first trying text extraction, then falling back to OCR with limits"""
+    # Lazy import for PDF processing
+    import pdfplumber
+    
     logger.info(f"Processing PDF file ({len(pdf_bytes)} bytes)")
     
     # First try to extract text directly from PDF
@@ -141,6 +144,8 @@ def process_pdf(pdf_bytes, max_pages_for_ocr=50):
     logger.info("Using OCR for PDF processing")
     
     try:
+        # Lazy import for PDF to image conversion
+        from pdf2image import convert_from_bytes
         images = convert_from_bytes(pdf_bytes)
         total_pages = len(images)
         logger.info(f"PDF converted to {total_pages} images for OCR")
@@ -174,17 +179,23 @@ def process_pdf(pdf_bytes, max_pages_for_ocr=50):
 
 def process_excel(file_content):
     """Process Excel files"""
+    # Lazy import for Excel processing
+    import pandas as pd
     df = pd.read_excel(BytesIO(file_content))
     text_content = df.to_string(index=False)
     return text_content
 
 def process_csv(file_content):
     """Process CSV files"""
+    # Lazy import for CSV processing
+    import pandas as pd
     df = pd.read_csv(BytesIO(file_content))
     return df.to_string(index=False)
 
 def process_word(file_content):
     """Process Word documents"""
+    # Lazy import for Word document processing
+    from docx import Document
     doc = Document(BytesIO(file_content))
     text_content = []
     for paragraph in doc.paragraphs:
