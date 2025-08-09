@@ -82,6 +82,9 @@ jobs:
         with:
           app-name: 'BB-FunctionApp'
           package: '.'
+          enable-oryx-build: true
+          scm-do-build-during-deployment: true
 
           
+
 
