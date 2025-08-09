@@ -55,4 +55,4 @@ python-docx
 pdfplumber
 
 # Optional database connection pooling (if used)
-psycopg2-pool==1.1
+psycopg2-binary
