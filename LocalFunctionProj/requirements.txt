@@ -21,41 +21,38 @@
 # pdfplumber
 
 # Core Azure Functions dependencies (always loaded)
-azure-functions>=1.18.0,<2.0.0
+azure-functions>=1.18.0
 
 # Database connectivity (always loaded for most functions)
 psycopg2-binary==2.9.7
 
 # HTTP requests (lightweight, used in multiple functions)
-requests>=2.28.0,<3.0.0
+requests
 
 # Core bot framework (only loaded when teams_bot function is called)
-botbuilder-core>=4.14.0,<5.0.0
-botframework-connector>=4.14.0,<5.0.0
+botbuilder-core>=4.14.0
+botframework-connector>=4.14.0
 
 # Authentication and Graph API (only loaded when graph functions are called)
-azure-identity>=1.15.0,<2.0.0
-msgraph-sdk>=1.0.0,<2.0.0
-msal>=1.20.0,<2.0.0
+msgraph-sdk>=1.0.0
+msal
 
 # ML and NLP dependencies (only loaded when embedding/retrieval functions are called)
-# Using specific versions for reproducibility and smaller downloads
 sentence-transformers==2.2.2
-torch>=2.0.0,<3.0.0  # PyTorch CPU version will be auto-selected
-numpy>=1.24.0,<2.0.0
-rank_bm25>=0.2.2
+numpy==1.24.3
+rank_bm25
 
 # LLM providers (only loaded when specific LLM functions are called)
-anthropic>=0.20.0,<1.0.0
+anthropic
 
 # Text extraction dependencies (only loaded when extract_text function is called)
 # These are the heaviest dependencies and benefit most from lazy loading
-Pillow>=9.0.0,<11.0.0
-pytesseract>=0.3.10
-pdf2image>=3.1.0
-pandas>=1.5.0,<3.0.0
-python-docx>=0.8.11
-pdfplumber>=0.9.0
+Pillow
+pytesseract
+pdf2image
+pandas
+python-docx
+pdfplumber
 
 # Optional database connection pooling (if used)
 psycopg2-pool==1.1
