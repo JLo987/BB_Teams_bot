@@ -3,7 +3,7 @@ Conversation history management for the RAG bot.
 Handles storing and retrieving conversation context.
 """
 
-import psycopg2
+import psycopg
 import logging
 import os
 from typing import List, Dict, Optional, Tuple
@@ -27,7 +27,7 @@ class ConversationManager:
     
     def get_connection(self):
         """Get database connection"""
-        return psycopg2.connect(**self.connection_params)
+        return psycopg.connect(**self.connection_params)
     
     def get_or_create_conversation(self, teams_conversation_id: str, user_id: str, channel_id: str = None, tenant_id: str = None) -> str:
         """Get existing conversation UUID or create new one with optimized structure"""

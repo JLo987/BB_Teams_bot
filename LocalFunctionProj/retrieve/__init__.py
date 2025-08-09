@@ -1,5 +1,5 @@
 import azure.functions as func
-import psycopg2
+import psycopg
 import json
 import logging
 import os
@@ -22,7 +22,7 @@ async def retrieve_internal(query: str, user_id: str = None, user_email: str = N
         query_embedding = model.encode(query).tolist()
         
         # Connect to database
-        conn = psycopg2.connect(
+        conn = psycopg.connect(
             host=DB_HOST, dbname=DB_NAME, 
             user=DB_USER, password=DB_PASS, sslmode="require"
         )

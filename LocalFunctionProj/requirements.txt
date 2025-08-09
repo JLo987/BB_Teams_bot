@@ -68,8 +68,8 @@ numpy==1.24.3
 rank_bm25
 requests
 anthropic
-psycopg2-binary==2.9.10  # Updated to latest
-psycopg2-pool==1.1
+psycopg[binary]==3.2.1  # Latest as of now; binary avoids compilation
+psycopg_pool==3.2.1
 Pillow
 pytesseract  # Warning: May not work in Functions; requires Tesseract binary
 pdf2image  # Warning: May not work; requires Poppler
