@@ -2,7 +2,7 @@
 # More GitHub Actions for Azure: https://github.com/Azure/actions
 # More info on Python, GitHub Actions, and Azure Functions: https://aka.ms/python-webapps-actions
 
-name: Build and deploy Python project to Azure Function App - BB-FunctionAPP
+name: Build and deploy Python project to Azure Function App - BB-FunctionApp
 
 on:
   push:
@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_PACKAGE_PATH: './LocalFunctionProj' # set this to the path to your web app project, defaults to the repository root
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.' # set this to the path to your web app project, defaults to the repository root
   PYTHON_VERSION: '3.11' # set this to the python version to use (supports 3.6, 3.7, 3.8)
 
 jobs:
@@ -35,16 +35,12 @@ jobs:
           source venv/bin/activate
 
       - name: Install dependencies
-        run: |
-          cd ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }} 
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
 
       # Optional: Add step to run tests here
 
       - name: Zip artifact for deployment
-        run: |
-          cd ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
-          zip -r ../release.zip . -x "*.git*" "*__pycache__*" "*.pyc" "*local.settings.json*"
+        run: zip release.zip ./* -r
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -73,19 +69,15 @@ jobs:
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_0C9F0F6149D540F981DE047F59ADB838 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_76AC8CF6B84440ABB32B8CA13658E96A }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_FCB46C7FF1CC4CA0A5182E9DFF5D6F63 }}
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_A8D1FC0143E84845BA2FEAF877901B70 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_6802D20172124263970B9EE2339184EB }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_B539575C2F96457781471CDFE26BBC0E }}
 
       - name: 'Deploy to Azure Functions'
         uses: Azure/functions-action@v1
         id: deploy-to-function
         with:
           app-name: 'BB-FunctionApp'
-          package: '.'
-
+          slot-name: 'Production'
+          package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
           
-
-
-
-
