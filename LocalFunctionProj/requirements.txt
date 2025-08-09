@@ -20,39 +20,59 @@
 # python-docx
 # pdfplumber
 
-# Core Azure Functions dependencies (always loaded)
+# # Core Azure Functions dependencies (always loaded)
+# azure-functions>=1.18.0
+
+# # Database connectivity (always loaded for most functions)
+# psycopg2-binary==2.9.7
+
+# # HTTP requests (lightweight, used in multiple functions)
+# requests
+
+# # Core bot framework (only loaded when teams_bot function is called)
+# botbuilder-core>=4.14.0
+# botframework-connector>=4.14.0
+
+# # Authentication and Graph API (only loaded when graph functions are called)
+# msgraph-sdk>=1.0.0
+# msal
+
+# # ML and NLP dependencies (only loaded when embedding/retrieval functions are called)
+# sentence-transformers==2.2.2
+# numpy==1.24.3
+# rank_bm25
+
+# # LLM providers (only loaded when specific LLM functions are called)
+# anthropic
+
+# # Text extraction dependencies (only loaded when extract_text function is called)
+# # These are the heaviest dependencies and benefit most from lazy loading
+# Pillow
+# pytesseract
+# pdf2image
+# pandas
+# python-docx
+# pdfplumber
+
+# # Optional database connection pooling (if used)
+# psycopg2-binary
+
 azure-functions>=1.18.0
-
-# Database connectivity (always loaded for most functions)
-psycopg2-binary==2.9.7
-
-# HTTP requests (lightweight, used in multiple functions)
-requests
-
-# Core bot framework (only loaded when teams_bot function is called)
 botbuilder-core>=4.14.0
 botframework-connector>=4.14.0
-
-# Authentication and Graph API (only loaded when graph functions are called)
 msgraph-sdk>=1.0.0
 msal
-
-# ML and NLP dependencies (only loaded when embedding/retrieval functions are called)
 sentence-transformers==2.2.2
+torch @ https://download.pytorch.org/whl/cpu/torch-2.1.0%2Bcpu-cp311-cp311-linux_x86_64.whl  # Use a recent CPU wheel; match your Python version
 numpy==1.24.3
 rank_bm25
-
-# LLM providers (only loaded when specific LLM functions are called)
+requests
 anthropic
-
-# Text extraction dependencies (only loaded when extract_text function is called)
-# These are the heaviest dependencies and benefit most from lazy loading
+psycopg2-binary==2.9.10  # Updated to latest
+psycopg2-pool==1.1
 Pillow
-pytesseract
-pdf2image
+pytesseract  # Warning: May not work in Functions; requires Tesseract binary
+pdf2image  # Warning: May not work; requires Poppler
 pandas
 python-docx
 pdfplumber
-
-# Optional database connection pooling (if used)
-psycopg2-binary
