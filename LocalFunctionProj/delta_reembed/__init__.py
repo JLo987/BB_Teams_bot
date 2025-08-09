@@ -1,5 +1,5 @@
 import azure.functions as func
-import psycopg
+import psycopg2
 import logging
 import os
 import json
@@ -768,7 +768,7 @@ async def delta_reembed(req) -> Optional[func.HttpResponse]:
         graph_client = await get_graph_client()
         
         # Connect to database
-        conn = psycopg.connect(
+        conn = psycopg2.connect(
             host=DB_HOST, 
             dbname=DB_NAME, 
             user=DB_USER, 
